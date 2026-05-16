@@ -9,6 +9,7 @@ use axum::{
 use serde::{Deserialize as SerdeDeserialize, Serialize as SerdeSerialize};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tower_http::cors::CorsLayer;
 
 use crate::geocoder::ReverseGeocoder;
 
@@ -48,6 +49,7 @@ pub async fn serve(port: u16, input: String, in_memory: bool) -> Result<()> {
 
     let app = Router::new()
         .route("/lookup", get(lookup_handler))
+        .layer(CorsLayer::permissive())
         .with_state(geocoder);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
