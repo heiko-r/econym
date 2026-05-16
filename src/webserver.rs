@@ -28,10 +28,8 @@ async fn lookup_handler(
     Query(params): Query<LookupQuery>,
     State(geocoder): State<Arc<ReverseGeocoder>>,
 ) -> Result<Json<LookupResponse>, StatusCode> {
-    if let Some(place) = geocoder.nearest_place(params.lat, params.lon) {
-        Ok(Json(LookupResponse {
-            name: place.name.clone(),
-        }))
+    if let Some(name) = geocoder.nearest_place(params.lat, params.lon) {
+        Ok(Json(LookupResponse { name: name.clone() }))
     } else {
         Err(StatusCode::NOT_FOUND)
     }

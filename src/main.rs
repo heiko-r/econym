@@ -83,11 +83,8 @@ fn main() -> Result<()> {
             }
             println!("Loaded after: {:.2?}", before.elapsed());
 
-            if let Some(place) = geocoder.nearest_place(lat, lon) {
-                println!(
-                    "Nearest place: {} ({}, {})",
-                    place.name, place.latitude, place.longitude
-                );
+            if let Some(name) = geocoder.nearest_place(lat, lon) {
+                println!("Nearest place: {}", name);
             } else {
                 println!("No place found");
             }

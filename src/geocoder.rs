@@ -6,7 +6,7 @@ use memmap2::Mmap;
 use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 use rkyv::ser::Serializer;
 use rkyv::ser::serializers::AllocSerializer;
-use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize};
+use rkyv::{Archive, Deserialize as RkyvDeserialize, Serialize as RkyvSerialize, with::Skip};
 use std::fs::File;
 
 /// Populated place record
@@ -25,7 +25,12 @@ pub struct ReverseGeocoderData {
     tree: KdTree<f64, 3>,
 
     /// Place storage indexed by item id in KD-tree
+    /// Only for loading phase, not serialised
+    #[with(Skip)]
     places: Vec<LoadingPlace>,
+
+    /// Names of places indexed by item id in KD-tree
+    names: Vec<String>,
 }
 
 enum GeocoderStorage {
@@ -45,6 +50,7 @@ impl ReverseGeocoder {
             storage: GeocoderStorage::Owned(ReverseGeocoderData {
                 tree: KdTree::new(),
                 places: Vec::new(),
+                names: Vec::new(),
             }),
         }
     }
@@ -55,7 +61,7 @@ impl ReverseGeocoder {
 
         let data: ReverseGeocoderData =
             archived.deserialize(&mut rkyv::de::deserializers::SharedDeserializeMap::new())?;
-        println!("Loaded {} places", data.places.len());
+        println!("Loaded {} places", data.names.len());
         self.storage = GeocoderStorage::Owned(data);
         Ok(())
     }
@@ -95,6 +101,7 @@ impl ReverseGeocoder {
 
         let mut tree = KdTree::new();
         let mut places: Vec<LoadingPlace> = Vec::new();
+        let mut names: Vec<String> = Vec::new();
 
         let mut batch_index = 1;
         for batch_result in geoparquet_reader {
@@ -104,10 +111,14 @@ impl ReverseGeocoder {
             println!("Processing batch {}", batch_index);
             batch_index += 1;
 
-            self.process_batch(batch, &mut tree, &mut places)?;
+            self.process_batch(batch, &mut tree, &mut places, &mut names)?;
         }
 
-        self.storage = GeocoderStorage::Owned(ReverseGeocoderData { tree, places });
+        self.storage = GeocoderStorage::Owned(ReverseGeocoderData {
+            tree,
+            places,
+            names,
+        });
         if let GeocoderStorage::Owned(data) = &self.storage {
             println!("Loaded {} places", data.places.len());
         }
@@ -130,20 +141,20 @@ impl ReverseGeocoder {
     }
 
     /// Find nearest populated place to given coordinates.
-    pub fn nearest_place(&self, latitude: f64, longitude: f64) -> Option<LoadingPlace> {
+    pub fn nearest_place(&self, latitude: f64, longitude: f64) -> Option<String> {
         let query = lat_lon_to_unit_sphere(latitude, longitude);
 
         match &self.storage {
             GeocoderStorage::Owned(data) => {
                 let nearest = data.tree.nearest_one::<SquaredEuclidean>(&query);
-                data.places.get(nearest.item as usize).cloned()
+                data.names.get(nearest.item as usize).cloned()
             }
             GeocoderStorage::Mapped(mmap) => {
                 let archived = unsafe { rkyv::archived_root::<ReverseGeocoderData>(mmap) };
                 let nearest = archived.tree.nearest_one::<SquaredEuclidean>(&query);
-                let archived_place = archived.places.get(nearest.item as usize)?;
+                let archived_name = archived.names.get(nearest.item as usize)?;
 
-                archived_place
+                archived_name
                     .deserialize(&mut rkyv::de::deserializers::SharedDeserializeMap::new())
                     .ok()
             }
@@ -155,6 +166,7 @@ impl ReverseGeocoder {
         batch: arrow_array::RecordBatch,
         tree: &mut KdTree<f64, 3>,
         places: &mut Vec<LoadingPlace>,
+        names: &mut Vec<String>,
     ) -> Result<()> {
         // Get the columns
         let subtype_column = batch.column_by_name("subtype");
@@ -191,10 +203,17 @@ impl ReverseGeocoder {
                 }
 
                 if let Some((latitude, longitude)) = self.extract_coordinates(geom_col, row)
-                    && let Some(place) =
-                        self.create_or_update_place(name, latitude, longitude, tree, places)
+                    && let Some(place) = self.create_or_update_place(
+                        name.clone(),
+                        latitude,
+                        longitude,
+                        tree,
+                        places,
+                        names,
+                    )
                 {
                     places.push(place);
+                    names.push(name);
                 }
             }
         }
@@ -360,9 +379,10 @@ impl ReverseGeocoder {
         longitude: f64,
         tree: &mut KdTree<f64, 3>,
         places: &mut [LoadingPlace],
+        names: &mut [String],
     ) -> Option<LoadingPlace> {
         let place = LoadingPlace {
-            name,
+            name: name.clone(),
             latitude,
             longitude,
         };
@@ -386,6 +406,7 @@ impl ReverseGeocoder {
                 tree.remove(&existing_point, existing.item);
                 tree.add(&point_sphere, existing_idx);
                 *places.get_mut(existing_idx as usize).unwrap() = place;
+                *names.get_mut(existing_idx as usize).unwrap() = name;
                 return None;
             }
         }

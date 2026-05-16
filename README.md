@@ -22,7 +22,7 @@ The information used is derived from the [Overture Maps Divisions theme](https:/
    ```bash
    aws s3 cp --no-sign-request --recursive s3://overturemaps-us-west-2/release/2026-04-15.0/theme=divisions/type=division/ ./
    ```
-2. Extract the relevant data into a local `geocoder.rkyv` file (~380 MB, about 2 minutes):
+2. Extract the relevant data into a local `geocoder.rkyv` file (~310 MB, about 2 minutes):
    ```bash
    econym load --input path/to/overture.parquet
    ```
@@ -45,4 +45,4 @@ curl "http://localhost:3000/lookup?lat=52.522&lon=13.325"
 
 ### In-memory mode
 
-The `lookup` and `serve` commands support an `--in-memory` flag to load the geocoder data into memory instead of using the file system. This will result in faster lookups, but will use significantly more memory (~550 MB instead of ~45 MB).
+The `lookup` and `serve` commands support an `--in-memory` flag to load the geocoder data into memory instead of using the file system. This will result in faster lookups, but will use significantly more memory (~500 MB instead of ~45 MB).
