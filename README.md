@@ -46,3 +46,7 @@ curl "http://localhost:3000/lookup?lat=52.522&lon=13.325"
 ### In-memory mode
 
 The `lookup` and `serve` commands support an `--in-memory` flag to load the geocoder data into memory instead of using the file system. This will result in faster lookups, but will use significantly more memory (~500 MB instead of ~45 MB).
+
+## Docker images
+
+The `Dockerfile` in this repository is intended to be used in the context of the Github Actions workflow. The resulting images and instuctions how to use them are available at https://hub.docker.com/r/heikorothkranz/econym.
