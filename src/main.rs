@@ -55,6 +55,12 @@ enum Commands {
 }
 
 fn main() -> Result<()> {
+    // Handle Ctrl+C and other termination signals explicitly,
+    // especially important when running as PID 1 in Docker.
+    ctrlc::set_handler(move || {
+        std::process::exit(0);
+    })?;
+
     let cli = Cli::parse();
 
     match cli.command {

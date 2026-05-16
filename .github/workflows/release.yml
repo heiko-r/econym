@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'   # semver tags, e.g. v1.2.3
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --repo "${{ github.repository }}" \
+            --title "${{ github.ref_name }}" \
+            --generate-notes
+
+  build-binaries:
+    name: Build binary (${{ matrix.platform.arch }})
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      matrix:
+        platform:
+          - runner: ubuntu-24.04
+            arch: amd64
+            target: x86_64-unknown-linux-musl
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+            target: aarch64-unknown-linux-musl
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install musl tools
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.platform.target }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: binary-${{ matrix.platform.arch }}
+          path: target/${{ matrix.platform.target }}/release/econym
+
+  build-docker:
+    name: Build and push Docker image
+    needs: [build-binaries]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download amd64 binary
+        uses: actions/download-artifact@v8
+        with:
+          name: binary-amd64
+          path: artifacts/amd64/
+
+      - name: Download arm64 binary
+        uses: actions/download-artifact@v8
+        with:
+          name: binary-arm64
+          path: artifacts/arm64/
+
+      - name: Make binaries executable
+        run: chmod +x artifacts/amd64/econym artifacts/arm64/econym
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: heikorothkranz
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: heikorothkranz/econym
+          tags: |
+            type=sha,prefix=sha-
+            type=raw,value=latest
+            type=semver,pattern={{major}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}}
+
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

@@ -1,6 +1,6 @@
 [package]
 name = "econym"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 
 [dependencies]
@@ -18,4 +18,5 @@ tokio = { version = "1.52.3", features = ["full"] }
 serde_json = "1.0.149"
 serde = { version = "1.0.228", features = ["derive"] }
 memmap2 = "0.9.10"
+ctrlc = { version = "3.5.2", features = ["termination"] }
 tower-http = { version = "0.6.10", features = ["cors"] }
